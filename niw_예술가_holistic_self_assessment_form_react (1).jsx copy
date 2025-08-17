@@ -1,0 +1,577 @@
+import { useEffect, useMemo, useState } from "react";
+
+// NIW Self‑Assessment Form for Artists (English)
+// - Responsive layout, step navigation, conditional suggestions, local save, JSON export
+// - TailwindCSS based. No external libs required.
+
+const QUESTIONS = [
+  // 1) Substantial Merit (Prong 1)
+  {
+    id: "Q1",
+    prong: 1,
+    title: "Artistic Merit",
+    prompt:
+      "Describe recognitions that demonstrate artistic merit (exhibitions, juried reviews, awards).",
+    docs: ["Exhibition records", "Jury/critic reviews", "Awards", "Photos/Videos"],
+    related: ["Q2", "Q5"],
+  },
+  {
+    id: "Q2",
+    prong: 1,
+    title: "Public Contribution",
+    prompt:
+      "Explain positive impact on a community or an industry (projects, campaigns, public programs).",
+    docs: ["Project proof", "Letters of support/verification"],
+    related: ["Q4", "Q6"],
+  },
+  {
+    id: "Q3",
+    prong: 1,
+    title: "Originality",
+    prompt:
+      "Explain the originality of your technique/ideas. Include technical differentiators and examples.",
+    docs: ["Work statements", "Process documentation", "Sketches/Prototypes"],
+    related: ["Q5", "Q7"],
+  },
+  // 2) National Interest (Prong 2)
+  {
+    id: "Q4",
+    prong: 2,
+    title: "Relevance to U.S. National Interests",
+    prompt:
+      "Describe how your work contributes to U.S. society/culture/economy/education with concrete examples.",
+    docs: ["Activity records", "Impact statement", "Institution letters"],
+    related: ["Q7", "Q11", "Q12"],
+  },
+  {
+    id: "Q5",
+    prong: 2,
+    title: "Cultural Diplomacy Value",
+    prompt:
+      "List overseas exhibitions, international exchanges, or joint projects with cross‑border impact.",
+    docs: ["International exhibition records", "Exchange program docs"],
+    related: ["Q8", "Q10"],
+  },
+  {
+    id: "Q6",
+    prong: 2,
+    title: "Educational/Social Contribution",
+    prompt:
+      "Describe workshops/lectures/initiatives through which your practice fosters educational or social change.",
+    docs: ["Teaching materials", "Photos/Posters", "Student/attendee feedback"],
+    related: ["Q9", "Q12"],
+  },
+  // 3) Waiver of Labor Certification (Prong 3)
+  {
+    id: "Q7",
+    prong: 3,
+    title: "Not Easily Substitutable",
+    prompt:
+      "Why is your expertise difficult to replace (scarcity, specialization, outcomes)?",
+    docs: ["Expert letters", "Critiques/Reviews", "Technique analysis"],
+    related: ["Q10"],
+  },
+  {
+    id: "Q8",
+    prong: 3,
+    title: "Labor Market Impact",
+    prompt:
+      "Explain positive cultural/economic spillovers while not adversely affecting the U.S. labor market.",
+    docs: ["Employer letters", "Market/Labor data"],
+    related: ["Q10"],
+  },
+  {
+    id: "Q9",
+    prong: 3,
+    title: "Uniqueness in the U.S.",
+    prompt:
+      "Substantiate how your style/work is rare or distinctive in the U.S. market.",
+    docs: ["Critic opinions", "Expert reviews"],
+    related: ["Q10"],
+  },
+  // Extra (Add‑ons)
+  {
+    id: "Q10",
+    prong: 0,
+    title: "International Recognition",
+    prompt: "List major international exhibitions/awards (biennales, fairs, global awards).",
+    docs: ["International exhibition records", "Award certificates"],
+    related: ["Q5", "Q7"],
+  },
+  {
+    id: "Q11",
+    prong: 0,
+    title: "Collaborations",
+    prompt: "Summarize collaborations with U.S. institutions/organizations and outcomes.",
+    docs: ["Agreements", "Recommendation letters from partners"],
+    related: ["Q4", "Q8"],
+  },
+  {
+    id: "Q12",
+    prong: 0,
+    title: "Media Coverage",
+    prompt: "Provide links and context for press/broadcast coverage.",
+    docs: ["News articles", "Broadcast captures"],
+    related: ["Q4", "Q6"],
+  },
+  {
+    id: "Q13",
+    prong: 0,
+    title: "Recommendation Letters",
+    prompt: "State availability of letters from recognized authorities (include recommender credentials).",
+    docs: ["3+ letters", "Recommender bios"],
+    related: ["Q7", "Q9"],
+  },
+];
+
+const STEPS = [
+  { key: "P1", label: "Prong 1: Substantial Merit", qids: ["Q1", "Q2", "Q3"] },
+  { key: "P2", label: "Prong 2: National Interest", qids: ["Q4", "Q5", "Q6"] },
+  { key: "P3", label: "Prong 3: Waiver", qids: ["Q7", "Q8", "Q9"] },
+  { key: "EX", label: "Additional Factors", qids: ["Q10", "Q11", "Q12", "Q13"] },
+  { key: "SM", label: "Summary", qids: [] },
+];
+
+function strengthColor(v) {
+  switch (v) {
+    case "Strong":
+      return "bg-emerald-600";
+    case "Medium":
+      return "bg-amber-500";
+    case "Weak":
+      return "bg-rose-500";
+    default:
+      return "bg-neutral-300";
+  }
+}
+
+export default function NIWForm() {
+  const [activeStep, setActiveStep] = useState(0);
+  const [answers, setAnswers] = useState(() => {
+    const saved = localStorage.getItem("niw_form_answers");
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  // answers structure: {
+  //   Q1: { text: "", strength: "Strong|Medium|Weak", docsChecked: {"Exhibition records":true}, links:["http…"] }
+  // }
+
+  useEffect(() => {
+    localStorage.setItem("niw_form_answers", JSON.stringify(answers));
+  }, [answers]);
+
+  const prongScore = useMemo(() => {
+    const map = { 1: 0, 2: 0, 3: 0 };
+    QUESTIONS.forEach((q) => {
+      const a = answers[q.id];
+      if (!a) return;
+      const add = a.strength === "Strong" ? 2 : a.strength === "Medium" ? 1 : 0;
+      if (q.prong >= 1 && q.prong <= 3) map[q.prong] += add;
+    });
+    return map; // {1: n, 2: n, 3: n}
+  }, [answers]);
+
+  const completeness = useMemo(() => {
+    const total = QUESTIONS.length;
+    const filled = QUESTIONS.filter((q) => {
+      const a = answers[q.id];
+      return a?.text?.trim()?.length > 0 || (a?.docsChecked && Object.keys(a.docsChecked).length > 0);
+    }).length;
+    return Math.round((filled / total) * 100);
+  }, [answers]);
+
+  const currentStep = STEPS[activeStep];
+
+  function updateAnswer(id, patch) {
+    setAnswers((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }));
+  }
+
+  function toggleDoc(id, d) {
+    const cur = answers[id]?.docsChecked || {};
+    const nv = { ...cur, [d]: !cur[d] };
+    if (!nv[d]) delete nv[d];
+    updateAnswer(id, { docsChecked: nv });
+  }
+
+  function addLink(id, value) {
+    const cur = answers[id]?.links || [];
+    const v = value?.trim();
+    if (!v) return;
+    updateAnswer(id, { links: [...cur, v] });
+  }
+
+  function removeLink(id, idx) {
+    const cur = answers[id]?.links || [];
+    const next = cur.filter((_, i) => i !== idx);
+    updateAnswer(id, { links: next });
+  }
+
+  function exportJSON() {
+    const payload = { createdAt: new Date().toISOString(), answers };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "NIW_self_assessment.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function resetAll() {
+    if (confirm("Reset all inputs?")) setAnswers({});
+  }
+
+  // Recommendation logic: weights based on strength + answer length
+  const recommendations = useMemo(() => {
+    const score = {};
+    QUESTIONS.forEach((q) => {
+      const a = answers[q.id];
+      if (!a) return;
+      const base = a.strength === "Strong" ? 2 : a.strength === "Medium" ? 1 : 0;
+      const bonus = a.text && a.text.length > 120 ? 1 : 0;
+      const w = base + bonus;
+      q.related.forEach((rid) => {
+        score[rid] = (score[rid] || 0) + w;
+      });
+    });
+    const arr = Object.entries(score)
+      .filter(([rid]) => !answers[rid] || !answers[rid].text)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([rid]) => rid);
+    return arr; // top 6 related QIDs
+  }, [answers]);
+
+  return (
+    <div className="min-h-screen bg-neutral-50">
+      {/* Header */}
+      <header className="sticky top-0 z-20 border-b bg-white/90 backdrop-blur">
+        <div className="mx-auto max-w-6xl px-4 py-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            {/* Firm logo lettering */}
+            <img src="/mnt/data/LQ-PNG.png" alt="Law Office of Hong‑Min Jun P.C." className="h-10 w-auto object-contain" />
+            <div>
+              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">NIW Artist Self‑Assessment</h1>
+              <p className="text-sm text-neutral-600">A responsive form to organize prongs and evidence collection in one flow</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <a href="mailto:askus@junlawfirm.com?subject=NIW%20Self-Assessment%20Inquiry&body=Hello,%20I%27d%20like%20to%20inquire%20about%20the%20self-assessment%20form." className="rounded-xl bg-neutral-900 px-3 py-2 text-sm text-white hover:bg-neutral-800">Email Us</a>
+            <button onClick={exportJSON} className="rounded-xl border px-3 py-2 text-sm hover:bg-neutral-100">Export JSON</button>
+            <button onClick={resetAll} className="rounded-xl border px-3 py-2 text-sm hover:bg-neutral-100">Reset</button>
+          </div>
+        </div>
+        {/* Progress */}
+        <div className="mx-auto max-w-6xl px-4 pb-3">
+          <div className="flex items-center justify-between text-xs text-neutral-600">
+            <div>Completion {completeness}%</div>
+            <div className="flex gap-3">
+              <span>Prong1: {prongScore[1]}</span>
+              <span>Prong2: {prongScore[2]}</span>
+              <span>Prong3: {prongScore[3]}</span>
+            </div>
+          </div>
+          <div className="h-2 w-full rounded-full bg-neutral-200 overflow-hidden">
+            <div className="h-full bg-neutral-900" style={{ width: `${completeness}%` }} />
+          </div>
+        </div>
+      </header>
+
+      {/* Body */}
+      <main className="mx-auto max-w-6xl px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Sidebar: Steps */}
+        <aside className="lg:col-span-3">
+          <div className="rounded-2xl border bg-white p-3 shadow-sm">
+            <nav className="space-y-1">
+              {STEPS.map((s, i) => (
+                <button
+                  key={s.key}
+                  onClick={() => setActiveStep(i)}
+                  className={`w-full text-left rounded-xl px-3 py-2 text-sm hover:bg-neutral-50 ${
+                    activeStep === i ? "ring-2 ring-neutral-300" : ""
+                  }`}
+                >
+                  <div className="font-medium">{s.label}</div>
+                  {s.qids.length > 0 && (
+                    <div className="mt-1 text-xs text-neutral-500">{s.qids.length} questions</div>
+                  )}
+                </button>
+              ))}
+            </nav>
+
+            {/* Recommendations */}
+            <div className="mt-4 border-t pt-3">
+              <div className="text-sm font-semibold">Suggested next items</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {recommendations.length === 0 && (
+                  <span className="text-xs text-neutral-500">As you fill more, related questions will be suggested here.</span>
+                )}
+                {recommendations.map((rid) => (
+                  <button
+                    key={rid}
+                    onClick={() => {
+                      const stepIdx = STEPS.findIndex((s) => s.qids.includes(rid));
+                      if (stepIdx >= 0) setActiveStep(stepIdx);
+                      setTimeout(() => {
+                        const el = document.getElementById(rid);
+                        el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }, 0);
+                    }}
+                    className="rounded-full border px-3 py-1.5 text-xs hover:bg-neutral-50"
+                  >
+                    Jump to {rid}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        {/* Content: Questions */}
+        <section className="lg:col-span-9 space-y-4">
+          {currentStep.key !== "SM" ? (
+            currentStep.qids.map((qid) => {
+              const q = QUESTIONS.find((x) => x.id === qid);
+              const a = answers[qid] || {};
+              return (
+                <article key={qid} id={qid} className="rounded-2xl border bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs text-neutral-500">{qid} · {q.prong ? `Prong ${q.prong}` : "Additional"}</div>
+                      <h3 className="text-lg font-semibold mt-0.5">{q.title}</h3>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {["Strong", "Medium", "Weak"].map((v) => (
+                        <button
+                          key={v}
+                          onClick={() => updateAnswer(qid, { strength: a.strength === v ? undefined : v })}
+                          className={`rounded-full px-3 py-1.5 text-xs text-white ${strengthColor(a.strength === v ? v : "none")}`}
+                          title={`Strength: ${v}`}
+                        >
+                          {v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <p className="mt-2 text-sm text-neutral-600">{q.prompt}</p>
+
+                  <textarea
+                    className="mt-3 w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-300"
+                    rows={5}
+                    value={a.text || ""}
+                    placeholder="Add specifics: dates, institutions, metrics, outcomes."
+                    onChange={(e) => updateAnswer(qid, { text: e.target.value })}
+                  />
+
+                  {/* Docs Checklist */}
+                  <div className="mt-3">
+                    <div className="text-sm font-medium">Evidence checklist</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {q.docs.map((d) => (
+                        <label key={d} className="inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs hover:bg-neutral-50">
+                          <input
+                            type="checkbox"
+                            className="accent-neutral-900"
+                            checked={!!(a.docsChecked && a.docsChecked[d])}
+                            onChange={() => toggleDoc(qid, d)}
+                          />
+                          <span>{d}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Links */}
+                  <div className="mt-3">
+                    <div className="text-sm font-medium">Links / file paths</div>
+                    <AddLinkRow onAdd={(url) => addLink(qid, url)} />
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(a.links || []).map((url, idx) => (
+                        <span key={idx} className="group inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs">
+                          <a href={url} target="_blank" rel="noreferrer" className="underline">Attachment {idx + 1}</a>
+                          <button onClick={() => removeLink(qid, idx)} className="opacity-60 group-hover:opacity-100">✕</button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Related chips */}
+                  {q.related?.length > 0 && (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <div className="text-xs text-neutral-500">Related suggestions:</div>
+                      {q.related.map((rid) => (
+                        <button
+                          key={rid}
+                          onClick={() => {
+                            const stepIdx = STEPS.findIndex((s) => s.qids.includes(rid));
+                            if (stepIdx >= 0) setActiveStep(stepIdx);
+                            setTimeout(() => {
+                              const el = document.getElementById(rid);
+                              el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                            }, 0);
+                          }}
+                          className="rounded-full border px-3 py-1.5 text-xs hover:bg-neutral-50"
+                        >
+                          Go to {rid}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </article>
+              );
+            })
+          ) : (
+            <Summary answers={answers} />
+          )}
+
+          {/* Step controls */}
+          <div className="flex items-center justify-between pt-2">
+            <button
+              disabled={activeStep === 0}
+              onClick={() => setActiveStep((s) => Math.max(0, s - 1))}
+              className="rounded-xl border px-4 py-2 text-sm disabled:opacity-40"
+            >
+              ← Previous
+            </button>
+            <button
+              onClick={() => setActiveStep((s) => Math.min(STEPS.length - 1, s + 1))}
+              className="rounded-xl bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-800"
+            >
+              {activeStep < STEPS.length - 1 ? "Next →" : "View Summary"}
+            </button>
+          </div>
+        </section>
+      </main>
+
+      {/* Footer: Disclaimers & Copyright */}
+      <footer className="border-t bg-white">
+        <div className="mx-auto max-w-6xl px-4 py-8 space-y-6">
+          <div className="flex flex-wrap items-center gap-4">
+            <img src="/mnt/data/LQ-PNG.png" alt="Law Office of Hong‑Min Jun P.C." className="h-8 w-auto object-contain" />
+          </div>
+
+          {/* Office info */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-neutral-700">
+            <div>
+              <div className="font-semibold">Fishers, Indiana Office</div>
+              <div>10150 Lantern Rd, Suite #175, Fishers, IN. 46037</div>
+              <div>Tel. 317-701-2768 · askus@junlawfirm.com</div>
+            </div>
+            <div>
+              <div className="font-semibold">Schaumburg, Illinois Office</div>
+              <div>1900 E. Golf Road, Suite #900, Schaumburg, IL. 60173</div>
+              <div>Tel. 847-660-4233 · askus@junlawfirm.com</div>
+            </div>
+          </div>
+
+          {/* Legal disclaimers */}
+          <section className="rounded-2xl border bg-neutral-50 p-4 text-xs text-neutral-700 leading-relaxed">
+            <p className="font-semibold">Disclaimer</p>
+            <ul className="mt-2 list-disc list-inside space-y-1">
+              <li>This form and materials are for general information only and do not constitute legal advice.</li>
+              <li>Using this form does not create an attorney–client relationship. Specific matters require a formal consultation.</li>
+              <li>Past results do not guarantee future outcomes. Decisions rest with USCIS discretion.</li>
+            </ul>
+            <p className="mt-3 font-semibold">Copyright & No Unauthorized Reproduction</p>
+            <ul className="mt-2 list-disc list-inside space-y-1">
+              <li>ⓒ 2025 Law Office of Hong‑Min Jun P.C. All rights reserved.</li>
+              <li>Unauthorized reproduction, redistribution, or publication is prohibited.</li>
+            </ul>
+          </section>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function AddLinkRow({ onAdd }) {
+  const [val, setVal] = useState("");
+  return (
+    <div className="mt-2 flex gap-2">
+      <input
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        placeholder="Enter a URL or file path, then click Add"
+        className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-neutral-300"
+      />
+      <button
+        onClick={() => {
+          onAdd(val);
+          setVal("");
+        }}
+        className="rounded-xl border px-3 py-2 text-sm hover:bg-neutral-50"
+      >
+        Add
+      </button>
+    </div>
+  );
+}
+
+function Summary({ answers }) {
+  const prongs = [
+    { n: 1, label: "Prong 1 (Substantial Merit)", ids: ["Q1", "Q2", "Q3"] },
+    { n: 2, label: "Prong 2 (National Interest)", ids: ["Q4", "Q5", "Q6"] },
+    { n: 3, label: "Prong 3 (Waiver)", ids: ["Q7", "Q8", "Q9"] },
+  ];
+
+  function prongStrength(n) {
+    const ids = prongs.find((p) => p.n === n)?.ids || [];
+    const s = ids.reduce((acc, id) => acc + (answers[id]?.strength === "Strong" ? 2 : answers[id]?.strength === "Medium" ? 1 : 0), 0);
+    if (s >= 5) return { label: "Strong", className: "bg-emerald-600" };
+    if (s >= 3) return { label: "Medium", className: "bg-amber-500" };
+    return { label: "Needs work", className: "bg-rose-500" };
+  }
+
+  const recs = useMemo(() => {
+    const out = [];
+    prongs.forEach((p) => {
+      const st = prongStrength(p.n).label;
+      if (st === "Needs work") {
+        if (p.n === 1) out.push("Prong1: bolster exhibitions/awards/critic reviews and originality docs");
+        if (p.n === 2) out.push("Prong2: substantiate U.S. activity + international exchange/education programs");
+        if (p.n === 3) out.push("Prong3: strengthen non‑substitutability letters and market‑impact data");
+      }
+    });
+    return out;
+  }, [answers]);
+
+  return (
+    <article className="rounded-2xl border bg-white p-4 shadow-sm">
+      <h3 className="text-lg font-semibold">Summary & Strategy</h3>
+      <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {prongs.map((p) => {
+          const s = prongStrength(p.n);
+          return (
+            <div key={p.n} className="rounded-2xl border p-3">
+              <div className="text-sm font-medium">{p.label}</div>
+              <div className="mt-2 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs text-white {s.className}">
+                {s.label}
+              </div>
+              <ul className="mt-3 space-y-1 text-sm list-disc list-inside">
+                {p.ids.map((id) => (
+                  <li key={id}>{id}: {answers[id]?.strength || "Not rated"}</li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-4">
+        <div className="text-sm font-semibold">Recommendations</div>
+        {recs.length === 0 ? (
+          <p className="mt-1 text-sm text-neutral-600">No major recommendations based on current input. Please re‑check the quality of evidence.</p>
+        ) : (
+          <ul className="mt-1 space-y-1 text-sm list-disc list-inside">
+            {recs.map((t, i) => <li key={i}>{t}</li>)}
+          </ul>
+        )}
+      </div>
+
+      <div className="mt-4 rounded-xl bg-neutral-50 p-3 text-xs text-neutral-600">
+        This tool is for reference self‑assessment only. Meeting all items is not required for approval; final decisions are at the discretion of USCIS.
+      </div>
+    </article>
+  );
+}
