@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NIW Artist Self Assessment</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+</head>
+<body class="bg-gray-50">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    function App() {
+      const [step, setStep] = React.useState(1);
+      const [formData, setFormData] = React.useState({
+        name: "",
+        email: "",
+        major: "",
+        degree: "",
+      });
+
+      const handleChange = (e) => {
+        setFormData({ ...formData, [e.target.name]: e.target.value });
+      };
+
+      const handleSubmit = async () => {
+        if (!formData.email.includes("@")) {
+          alert("Please enter a valid email address. 이메일 주소를 올바르게 입력하세요.");
+          return;
+        }
+        try {
+          const response = await fetch("https://formspree.io/f/mjkoqgod", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(formData),
+          });
+          if (response.ok) {
+            alert("Form submitted successfully! 양식이 성공적으로 제출되었습니다.");
+          } else {
+            alert("Submission failed. 제출에 실패했습니다.");
+          }
+        } catch (error) {
+          alert("Error occurred. 오류가 발생했습니다.");
+        }
+      };
+
+      return (
+        <div className="max-w-2xl mx-auto p-6 bg-white shadow rounded mt-10">
+          <h1 className="text-2xl font-bold text-center mb-6">NIW Artist Self Assessment</h1>
+          <div className="flex space-x-4 mb-6">
+            <button
+              className={\`px-4 py-2 rounded \${step === 1 ? "bg-blue-500 text-white" : "bg-gray-200"}\`}
+              onClick={() => setStep(1)}
+            >
+              Applicant Info
+            </button>
+            <button
+              className={\`px-4 py-2 rounded \${step === 2 ? "bg-blue-500 text-white" : "bg-gray-200"}\`}
+              onClick={() => setStep(2)}
+            >
+              Review & Submit
+            </button>
+          </div>
+
+          {step === 1 && (
+            <div>
+              <label className="block mb-2">
+                Applicant Name / 지원자 이름
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  className="w-full border p-2 rounded mt-1"
+                />
+              </label>
+              <label className="block mb-2">
+                Email Address / 이메일
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  className="w-full border p-2 rounded mt-1"
+                />
+              </label>
+              <label className="block mb-2">
+                Major and Degree / 전공 및 학위
+                <input
+                  type="text"
+                  name="major"
+                  value={formData.major}
+                  onChange={handleChange}
+                  className="w-full border p-2 rounded mt-1"
+                />
+              </label>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div>
+              <h2 className="text-xl mb-4">Review Your Information / 정보 확인</h2>
+              <p><strong>Name:</strong> {formData.name}</p>
+              <p><strong>Email:</strong> {formData.email}</p>
+              <p><strong>Major & Degree:</strong> {formData.major}</p>
+              <button
+                onClick={handleSubmit}
+                className="mt-4 px-4 py-2 bg-green-500 text-white rounded"
+              >
+                Submit via Email / 이메일로 제출
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
